@@ -1,11 +1,9 @@
 #   TODO:   Pratt identification/compilation shall be more flexible (checking seq length of 3 seems to weak)
 #           Checker memo/backup/restore avec les ALT
-#           Formalize output format
 #           Add macro // functionnal parsers 
-#           Standard way to ignore a comment/space
-
+#           add a way to skip/handle space a standarized/optional way...
 #           Standard standard language primitives
-
+#           More flexible way to detect non-recc parsers...
 import json
 
 # Define associativity constants
@@ -86,6 +84,12 @@ class Term:
         self.value = value
         self.skip = skip
     def parse(self, grammar, text, pos, memo):
+        if pos >= len(text):
+            return (False, None, pos)
+        while text[pos].isspace():
+            pos += 1
+            if pos >= len(text):
+                return (False, None, pos)
         if text.startswith(self.value, pos):
             new_pos = pos + len(self.value)
             return (
@@ -104,6 +108,12 @@ class Lexer:
         self.fn = fn
 
     def parse(self, grammar, text, pos, memo):
+        if pos >= len(text):
+            return (False, None, pos)
+        while text[pos].isspace():
+            pos += 1
+            if pos >= len(text):
+                return (False, None, pos)
         success, node, new_pos = self.fn(text, pos)
         if success:
             return (
@@ -118,6 +128,7 @@ class Punc(Term):
     def __init__(self, value, skip = True):
         self.value = value
         self.skip = skip
+
 class Rule:
     def __init__(self, name):
         self.name = name
@@ -163,7 +174,12 @@ class Seq:
                 return (False, None, pos)
             if tree:
                 childrens.append(tree)
-        return (True, childrens if len(childrens) > 1 else childrens[0], current_pos)
+        if len (childrens) == 0:
+            return (True, None, current_pos)
+        elif len (childrens) == 1:
+            return (True, childrens[0], current_pos)
+        else:
+            return (True, childrens, current_pos)
     
     def __repr__(self):
         return f"Seq({', '.join(map(repr, self.parsers))})"
@@ -205,12 +221,16 @@ class Macro:
         return output
 
 class Repeat:
-    def __init__(self, parser):
+    def __init__(self, parser, min=0):
         self.parser = parser
+        self.min = min
 
     def parse(self, grammar, text, pos, memo):
         current_pos = pos
         results = []
+        count = 0
+
+        # Try to parse as many times as possible
         while True:
             success, tree, new_pos = self.parser.parse(grammar, text, current_pos, memo)
             if not success or new_pos <= current_pos:
@@ -218,10 +238,16 @@ class Repeat:
             if tree is not None:
                 results.append(tree)
             current_pos = new_pos
+            count += 1
+
+        # If we didn’t reach the minimum, fail
+        if count < self.min:
+            return (False, None, pos)
+
         return (True, results, current_pos)
 
     def __repr__(self):
-        return f"Repeat({repr(self.parser)})"
+        return f"Repeat({repr(self.parser)}, min={self.min})"
 
 class Opt:
     def __init__(self, parser):
@@ -252,7 +278,12 @@ class PrattRule:
 
         if not success:
             return (False, None, pos)
-            
+
+
+        if pos < len(text):
+            while pos < len(text) and text[pos].isspace():
+                pos += 1
+
         while True:
             # Find all matching operators at current position
             possible_ops = []
@@ -277,7 +308,6 @@ class PrattRule:
             op_pos = pos
             pos += op_len
             
-            # Parse right operand
             success, right_tree, pos = self._parse_pratt(grammar, text, pos, memo, next_min)
             if not success:
                 return (False, None, op_pos)
@@ -297,7 +327,11 @@ def parse(grammar, text, start_rule='program'):
     grammar.compile()
     memo = {}
     parser = grammar.parsers[start_rule]
-    success, tree, pos = parser.parse(grammar, text, 0, memo)
+    pos = 0
+    while pos < len(text) and text[pos].isspace():
+        pos += 1
+    text = text.rstrip()
+    success, tree, pos = parser.parse(grammar, text, pos, memo)
     if success and pos == len(text):
         return tree
     raise ValueError(f"Parse error at position {pos}")

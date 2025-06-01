@@ -55,8 +55,8 @@ g.define('expr', Alt(
 
 ##############    
 
-tree = parse(g, "5-2-1", "expr")
+tree = parse(g, "5 - 2 - 1", "expr")
 print(json.dumps(tree, indent=2))
 print("=============")
-tree = parse(g, "987", "expr")
+tree = parse(g, " 987", "expr")
 print(json.dumps(tree, indent=2))
